@@ -172,7 +172,7 @@ p1 <- NULL # YOUR CODE HERE (EXAMPLE ONLY)
 As you work on the problem, replace the text `NULL # YOUR CODE HERE` with your solution to the problem. Running `. = ottr::check("tests/p1.R")` will then tell you if you're right or wrong, and sometimes provide helpful hints. Let's try.
 
 ```{r}
-p1 <- NULL # YOUR CODE HERE
+p1 <- 5
 ```
 
 ```{r}
@@ -183,7 +183,7 @@ When you enter the correct answer, `. = ottr::check("tests/p1.R")` should tell y
 
 ```{r five-wrong}
 # This is a WRONG NUMERIC answer. Change it back to 5 afterwards to compare the autograder response!
-p2 <- NULL # FILL IN WITH INTEGER
+p2 <- 5
 ```
 
 ```{r}
