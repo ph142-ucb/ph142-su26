@@ -198,7 +198,7 @@ I am looking forward to...
 
 _Type your answer here, replacing this text._
 
-Now, at the end of the assignment, you should go back through and run each code chunk to be sure you passed all of your tests. On this assignment, that only means that `p1` and `p2` should equal 5. Go back and change your answers if they are not! One way to check that works well is to click the grey downward facing arrow in the right corner of the code chunk. This will run all previous code chunks so all of your answers are up to date.
+Now, at the end of the assignment, you should go back through and run each code chunk to be sure you passed all of your tests. On this assignment, that only means that `p1` and `p2` should equal 5. Go back and change your answers if they are not! One way to check that works well is to click the grey downward facing arrow in the right corner of the code chunk. This will run all previous code chunks so all of your answers are up to date.≠
 
 When you're happy with your work, you can submit your assignment--without even leaving RStudio! The submission instructions will be on the last page of every assignment, including this one. Make sure you don't forget to submit.
 
