@@ -1,7 +1,7 @@
 ---
 title: 'Lab 4: Screening and Precision Public Health'
 author: "Your name and student ID"
-date: "today's date"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
 output: pdf_document
 ---
 
