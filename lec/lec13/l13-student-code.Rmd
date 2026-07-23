@@ -9,6 +9,34 @@ library(ggplot2)
 ```
 
 
+## Recap: distributions so far
+
+### Recap question 1: Normal
+
+The heights of young women are approximately $N(\mu = 64.5, \sigma = 2.5)$ inches.
+Using the 68-95-99.7 rule, about what proportion of young women are between
+62 and 67 inches tall?
+
+```{r recap-q1}
+# 62 and 67 are exactly 1 SD below and above the mean, so about 68%
+pnorm(67, mean = 64.5, sd = 2.5) - pnorm(62, mean = 64.5, sd = 2.5)
+```
+
+### Recap question 2: Binomial
+
+A bottling line contaminates each bottle independently with probability
+$p = 0.1$. In a box of $n = 10$ bottles, $X \sim \text{Bin}(10, 0.1)$.
+What are the mean and standard deviation of $X$?
+
+```{r recap-q2}
+n <- 10; p <- 0.1
+mu <- n * p                  # mean = np
+sigma <- sqrt(n * p * (1-p)) # sd = sqrt(np(1-p))
+c(mean = mu, sd = sigma)
+```
+
+## Poisson probabilities
+
 ### Probability distribution of a Poisson random variable
 
 ```{r, out.width="90%", echo=F, warning=F, message=FALSE}
