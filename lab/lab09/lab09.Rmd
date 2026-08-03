@@ -15,7 +15,7 @@ library(tidyverse)
 library(testthat)
 ```
 
-* Due date: Friday, April 10th at 9:59pm PDT with 2 hour grace period.
+* Due date: August 5th at 11:59 PM.
 * Late penalty: 50% late penalty if submitted within 24 hours of due date, no 
 marks for assignments submitted thereafter.
 * This assignment is graded on **correct completion**, all or nothing. You must pass all public tests and submit the assignment for credit.
