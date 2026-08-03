@@ -12,7 +12,7 @@ library(testthat)
 ```
 
 ### Instructions 
-* Due date: Friday, April 3rd at 9:59pm PDT with with 2 hour grace period.
+* Due date: August 3rd at 11:59 PM.
 * No submissions will be accepted after the grace period.
 * This assignment is graded on **correct completion**, all or nothing. You must pass all public tests and submit the assignment for credit.
 * Submission process: Follow the submission instructions on the final page. Make sure you do not remove any `\newpage` tags or rename this file, as this will break the submission.
