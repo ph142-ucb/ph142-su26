@@ -1,0 +1,261 @@
+---
+title: "L25: The chi-squared goodness of fit"
+output: html_document
+---
+
+```{r load-libraries, include=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+knitr::opts_chunk$set(fig.align = "center", message = FALSE, warning = FALSE)
+options(width = 90)
+```
+
+Every calculation from L25 in one runnable place. Up to now a categorical variable
+had **two** categories and we tested a single proportion. Today the variable has
+**many** categories, and we ask one question about the whole distribution at once.
+
+There is no external data file. Every number below is typed in from the slides.
+Try the practice problems at the bottom before checking the answers.
+
+## The test statistic
+
+$$\chi^2 = \sum_{i=1}^k \frac{(O_i - E_i)^2}{E_i}$$
+
+Three things to keep straight.
+
+| Symbol | What it is | Common mistake |
+|--------|-----------|----------------|
+| $O_i$ | observed **count** in category $i$ | using a proportion instead of a count |
+| $E_i$ | expected **count** under $H_0$, i.e. $n \times p_i$ | forgetting to multiply by $n$ |
+| $df$ | $k - 1$, where $k$ is the number of categories | using $n - 1$ |
+
+Squaring the numerator is what stops positive and negative gaps from cancelling.
+Dividing by $E_i$ is what makes a gap of 100 matter more in a small category than
+in a large one.
+
+## Example 1: jury selection
+
+A county's jury pool of 2500 people, against the racial composition of the county.
+
+```{r jury-data}
+race     <- c("White", "Black", "Latinx", "Asian", "Other")
+observed <- c(1920, 347, 19, 84, 130)
+pop_prop <- c(.422, .103, .251, .171, .053)
+
+expected <- 2500 * pop_prop
+expected
+```
+
+Note that the expected counts sum to the same total as the observed counts. That is
+always true, and it is a free way to catch an arithmetic slip.
+
+```{r jury-totals}
+sum(observed)
+sum(expected)
+```
+
+### Build the statistic by hand
+
+```{r jury-by-hand}
+contributions <- (observed - expected)^2 / expected
+round(contributions, 3)
+
+chi_sq <- sum(contributions)
+chi_sq
+```
+
+The contributions are the most useful output here. A chi-square test gives one
+p-value for the whole table, but the contributions tell you **which** categories
+drove it. White, Latinx and Asian dominate.
+
+```{r jury-pvalue}
+pchisq(q = chi_sq, df = 4, lower.tail = FALSE)
+```
+
+R rounds this to 0. We always use `lower.tail = FALSE` because only *large* values
+of $\chi^2$ are evidence against the null, so the p-value is always an upper tail area.
+
+### The one-line version
+
+```{r jury-chisq}
+# x = observed counts, p = probabilities under the null
+chisq.test(x = observed, p = pop_prop)
+```
+
+Same statistic, same degrees of freedom.
+
+### The picture
+
+```{r jury-plot, out.width="80%", fig.width=8, fig.height=3.6}
+jury_data <- data.frame(race, observed, expected)
+
+ggplot(jury_data, aes(y = race, x = observed)) +
+  geom_segment(aes(xend = expected, yend = race)) +
+  geom_point(aes(col = "Observed"), size = 2.5) +
+  geom_point(aes(col = "Expected", x = expected), size = 2.5) +
+  theme_minimal(base_size = 12) +
+  labs(x = "Number of jurors", y = "Race/ethnicity", col = NULL,
+       title = "Observed vs. expected number of jurors")
+```
+
+The three longest lines are exactly the three biggest contributions above. A good
+picture usually tells you the answer before the test does.
+
+## The chi-square distribution
+
+```{r chisq-shapes, out.width="80%", fig.width=7, fig.height=3.6}
+df_levels <- c("df=2", "df=4", "df=9", "df=15")
+
+ggplot(data = data.frame(x = c(0.1, 30)), aes(x)) +
+  stat_function(fun = dchisq, n = 201, args = list(df = 2),
+                aes(col = factor("df=2", df_levels))) +
+  stat_function(fun = dchisq, n = 201, args = list(df = 4),
+                aes(col = factor("df=4", df_levels))) +
+  stat_function(fun = dchisq, n = 201, args = list(df = 9),
+                aes(col = factor("df=9", df_levels))) +
+  stat_function(fun = dchisq, n = 201, args = list(df = 15),
+                aes(col = factor("df=15", df_levels))) +
+  coord_cartesian(ylim = c(0, 0.25)) +
+  theme_minimal(base_size = 12) +
+  labs(x = NULL, y = "Density", col = NULL, title = "Chi-squared distributions")
+```
+
+The distribution is never negative, and as $df$ rises the whole curve slides right.
+That means with more categories you expect a larger statistic from ordinary noise
+alone, so it takes a larger value to surprise you.
+
+## Example 2: Alameda County vaccine doses
+
+```{r alameda}
+doses <- c(209299, 5024, 2012, 6617, 77668, 194647, 45509)
+pop_p <- c(.306, .009, .011, .054, .187, .323, .110)
+
+chisq.test(x = doses, p = pop_p)
+```
+
+The statistic is enormous, but so is the sample. With over half a million people,
+even tiny departures from the null become statistically significant. So the honest
+conclusion is that the disparity is **real**, not that it is large. To say how large,
+look at the gaps themselves.
+
+```{r alameda-gaps}
+data.frame(
+  group      = c("White", "PI", "Native Am.", "Multirace", "Latinx", "Asian", "AA/Black"),
+  pct_pop    = pop_p * 100,
+  pct_doses  = round(doses / sum(doses) * 100, 1)
+)
+```
+
+## Example 3: cheating at dice?
+
+Three dice, 100 rolls, counting how many sixes come up each time. Here the null is
+not handed to us. We derive it from the binomial.
+
+```{r dice-expected}
+Expected <- dbinom(0:3, size = 3, prob = 1/6)
+Expected
+
+# as counts, out of 100 rolls
+round(100 * Expected, 2)
+```
+
+```{r dice-chisq}
+observed_dice <- c(47, 35, 15, 3)
+chisq.test(x = observed_dice, p = Expected)
+```
+
+**Read the warning.** It is not noise. Look back at the expected counts: the "3 sixes"
+cell expects only 0.46, which breaks the rule that every cell needs $E_i > 1$.
+
+### Fixing it by collapsing categories
+
+The standard fix is to combine sparse categories. Here we merge "2 sixes" and
+"3 sixes" into a single "2 or more" category.
+
+```{r dice-collapsed}
+p_2plus   <- 1 - dbinom(0, 3, 1/6) - dbinom(1, 3, 1/6)
+Expected2 <- c(dbinom(0:1, size = 3, prob = 1/6), p_2plus)
+round(100 * Expected2, 2)   # all now above 5
+
+chisq.test(x = c(47, 35, 18), p = Expected2)
+```
+
+No warning this time. The statistic is smaller and the degrees of freedom dropped to
+2, which is what you should expect after throwing away detail, but the conclusion
+survives. Always check the conditions, fix the problem, then see whether your answer
+was ever really in danger.
+
+## Conditions, in one place
+
+- Fixed $n$, independent observations, mutually exclusive categories.
+- $E_i \geq 5$ for at least 80% of cells.
+- $E_i > 1$ for **every** cell.
+
+All of these are about **expected** counts, never observed counts.
+
+---
+
+# Practice problems
+
+### Problem 1
+
+A die is rolled 120 times and lands on 1 through 6 this many times:
+25, 17, 15, 23, 24, 16. Test whether the die is fair.
+
+*Hint: under a fair die every face has probability 1/6, so all six expected counts
+are the same.*
+
+```{r p1}
+rolls <- c(25, 17, 15, 23, 24, 16)
+chisq.test(x = rolls, p = rep(1/6, 6))
+```
+
+**Answer.** $\chi^2 = 5.0$ on 5 degrees of freedom, p-value about 0.42. No evidence
+against fairness. Note the expected count is $120/6 = 20$ in every cell, comfortably
+above 5.
+
+### Problem 2
+
+For the die in Problem 1, compute the contribution of each face to the statistic by
+hand and confirm they sum to what `chisq.test` reported.
+
+```{r p2}
+expected_fair <- rep(120/6, 6)
+contrib <- (rolls - expected_fair)^2 / expected_fair
+round(contrib, 4)
+sum(contrib)
+```
+
+**Answer.** They sum to 5.0, matching the test exactly. Faces 1 and 3 tie for the
+largest contribution at 1.25 each, being the two furthest from 20, but neither is
+anywhere near large enough to matter.
+
+### Problem 3
+
+A clinic expects its patients to arrive 20% Monday, 20% Tuesday, 20% Wednesday,
+20% Thursday and 20% Friday. One week it sees 30, 22, 18, 25 and 5 patients.
+Is the distribution as expected? Check the conditions first.
+
+```{r p3}
+patients <- c(30, 22, 18, 25, 5)
+n <- sum(patients)
+expected_days <- n * rep(0.2, 5)
+expected_days          # check all >= 5 before testing
+
+chisq.test(x = patients, p = rep(0.2, 5))
+```
+
+**Answer.** The expected counts are all 20, so the conditions are fine even though
+one *observed* count is only 5. Remember the rule is about expected counts. The test
+gives $\chi^2 = 17.9$ on 4 degrees of freedom, p-value about 0.0013, so there is
+strong evidence the arrivals are not evenly spread. Friday is the culprit, on its
+own contributing $(5-20)^2/20 = 11.25$ of the 17.9.
+
+### Problem 4
+
+Why is the p-value for a chi-square test always an upper tail probability?
+
+**Answer.** Because every departure from the null, in any direction and in any
+category, makes the numerator $(O_i - E_i)^2$ larger and therefore makes $\chi^2$
+larger. A small $\chi^2$ means the data look *like* the null, so only large values
+are evidence against it. There is nothing a one-sided or two-sided distinction could
+mean here.
