@@ -1,0 +1,376 @@
+---
+title: "L27: Wrapping up and structured review"
+output: html_document
+---
+
+```{r load-libraries, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(fig.align = "center", message = FALSE, warning = FALSE)
+options(width = 90)
+```
+
+Every calculation from L27 in one runnable place, plus the decision tree written out as a
+lookup table you can revise from.
+
+There is no external data file. Every number below is typed in from the slides.
+
+The exam does not tell you which test to use. That is the whole skill this lecture is
+about, so the practice problems at the bottom are mostly **choose the test** problems
+rather than arithmetic. Try them before checking the answers.
+
+## The two recipes
+
+Everything in Part III is one of these two, with different ingredients.
+
+**Recipe 1, hypothesis testing.** Check assumptions, build a ratio of effect to
+variability, convert that ratio to a probability, decide.
+
+**Recipe 2, confidence intervals.** Take the estimate, find the critical value, multiply it
+by the variability, add and subtract.
+
+Every test statistic in the course has the same shape:
+
+$$\text{test statistic} = \frac{\text{effect}}{\text{variability}} = \frac{\text{signal}}{\text{noise}}$$
+
+## The decision tree as a lookup table
+
+Four questions pick the test. What kind of outcome, how many groups, paired or
+independent, parametric or not.
+
+### Continuous outcomes
+
+| Situation | Test | R |
+|---|---|---|
+| 1 group vs a hypothesized value | one sample $t$ | `t.test(x, mu = )` |
+| 1 group, $\sigma$ known | one sample $z$ | `pnorm()` |
+| 2 groups, independent | two sample $t$ | `t.test(y ~ g)` |
+| 2 groups, independent, assumptions fail | Wilcoxon rank sum | `wilcox.test(y ~ g)` |
+| 2 groups, paired | paired $t$ | `t.test(x1, x2, paired = TRUE)` |
+| 2 groups, paired, assumptions fail | Wilcoxon signed rank | `wilcox.test(x1, x2, paired = TRUE)` |
+| 3+ groups | ANOVA, then Tukey or Bonferroni | `aov()`, `TukeyHSD()` |
+| 3+ groups, assumptions fail | Kruskal-Wallis | `kruskal.test(y ~ g)` |
+| continuous predictor | correlation, linear regression | `cor.test()`, `lm()` |
+
+### Categorical outcomes
+
+| Situation | Test | R |
+|---|---|---|
+| 1 group, 2 categories | one sample $z$ for a proportion | `prop.test(x, n, p = )` |
+| 1 group, 3+ categories | chi-square goodness of fit | `chisq.test(counts, p = )` |
+| 2 groups, 2 categories | two sample $z$, or chi-square | `prop.test(x, n)`, `chisq.test()` |
+| 2 categorical variables, any table | chi-square test of independence | `chisq.test(table)` |
+
+The paired versus independent question is the one people miss. If the **same subject**
+appears in both conditions, or subjects are matched in pairs, the data are paired.
+
+## Example 1: staph infections
+
+917 patients randomised to a staph-killing nasal ointment or placebo. 17 of 504 in the
+treatment group developed a post-surgical infection, 32 of 413 in the placebo group.
+
+Categorical outcome, two independent groups, so this is a two sample $z$ test for
+proportions. The question asks about a *reduction*, so the test is one sided.
+
+```{r staph-setup}
+x <- c(17, 32)      # infections
+n <- c(504, 413)    # group sizes
+
+p1 <- x[1] / n[1]
+p2 <- x[2] / n[2]
+c(p1 = p1, p2 = p2, difference = p1 - p2)
+```
+
+### Ingredient 2, and why we pool
+
+The null says $p_1 = p_2$. If that is true, splitting the data in two to estimate that
+common proportion throws information away, so we pool.
+
+$$\hat{p} = \frac{17+32}{504+413}, \qquad SE = \sqrt{\hat{p}(1-\hat{p})\Big(\frac{1}{n_1}+\frac{1}{n_2}\Big)}$$
+
+```{r staph-pooled}
+p_pooled <- sum(x) / sum(n)
+p_pooled
+
+se_pooled <- sqrt(p_pooled * (1 - p_pooled) * (1/n[1] + 1/n[2]))
+se_pooled
+```
+
+### The test statistic and the p-value
+
+```{r staph-z}
+z <- (p1 - p2) / se_pooled
+z
+
+# one sided, and pnorm gives the left tail by default
+pnorm(z)
+```
+
+### The one-line version
+
+```{r staph-prop-test}
+prop.test(x = x, n = n, alternative = "less", correct = FALSE)
+```
+
+Two things to notice in that output. The p-value matches the hand calculation. And
+`X-squared` is 8.5906, whose square root is our $z$ of 2.931. On a 2x2 table
+$\chi^2 = z^2$ exactly, which is why R can report either one.
+
+```{r staph-chi-vs-z}
+z^2
+```
+
+### The confidence interval, and why we do *not* pool
+
+This is the single most common mistake on this material.
+
+A confidence interval is not computed under the null, so the assumption that let us pool is
+gone. Each group gets its own proportion.
+
+$$(\hat{p}_1 - \hat{p}_2) \pm z^*\sqrt{\frac{\hat{p}_1(1-\hat{p}_1)}{n_1} + \frac{\hat{p}_2(1-\hat{p}_2)}{n_2}}$$
+
+```{r staph-ci}
+se_unpooled <- sqrt(p1 * (1 - p1) / n[1] + p2 * (1 - p2) / n[2])
+se_unpooled
+
+(p1 - p2) + c(-1, 1) * 1.96 * se_unpooled
+```
+
+So the 95% CI is about -0.0740 to -0.0135. It excludes 0, which had to happen given the
+small p-value.
+
+Here is what pooling by mistake would have given you:
+
+```{r staph-ci-wrong}
+(p1 - p2) + c(-1, 1) * 1.96 * se_pooled   # NOT the right interval
+```
+
+Close, but wrong, and on an exam it is wrong for a reason you are expected to be able to
+state. Use the pooled SE for the **test**, the unpooled SE for the **interval**.
+
+Read the interval in plain language. The data are consistent with anything from about 1.4
+to about 7.4 fewer infections per hundred patients.
+
+## Example 5: births by day of the week
+
+700 births, classified by day. One sample, one categorical variable with seven categories,
+so this is a chi-square **goodness of fit** test. The null is that all seven days are
+equally likely.
+
+```{r births}
+births <- c(110, 124, 104, 94, 112, 72, 84)
+names(births) <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+births
+sum(births)
+```
+
+```{r births-expected}
+expected <- sum(births) / 7   # 100 per day under the null
+expected
+
+min(expected)   # condition: every expected count at least 5
+```
+
+```{r births-test}
+# chisq.test assumes equal probabilities by default, which is exactly our null
+chisq.test(births)
+```
+
+Degrees of freedom are $k - 1 = 6$. Not $(r-1)(c-1)$, because there is only one variable
+here.
+
+Look at where the statistic comes from rather than just reading the total:
+
+```{r births-contributions}
+contrib <- (births - expected)^2 / expected
+round(contrib, 3)
+```
+
+Saturday alone contributes 7.84 of the 19.12. The test says births are not uniform across
+the week, but it cannot tell you whether that is biology or scheduled deliveries.
+
+## Example 6: grades
+
+350 Berkeley transcripts, compared against a California-wide distribution of A = 50%,
+B = 30%, C = 15%, F = 5%.
+
+One sample, one categorical variable, and the null comes from an outside source. Goodness
+of fit again, **not** a test of independence, because there is only one variable.
+
+```{r grades}
+observed <- c(A = 224, B = 99, C = 17, F = 10)
+p_null   <- c(0.50, 0.30, 0.15, 0.05)
+
+expected_g <- sum(observed) * p_null
+expected_g
+```
+
+Expected counts do not have to be whole numbers, but they must sum to the observed total.
+That is a free check on your arithmetic:
+
+```{r grades-check}
+sum(expected_g) == sum(observed)
+```
+
+```{r grades-contributions}
+contrib_g <- (observed - expected_g)^2 / expected_g
+round(contrib_g, 3)
+sum(contrib_g)
+```
+
+```{r grades-test}
+chisq.test(observed, p = p_null)
+```
+
+The C category contributes more than half the statistic all by itself, because we expected
+52.5 students and saw 17. Dividing by the expected count is what makes a shortfall in a
+small category outweigh a surplus in a large one.
+
+And read the direction. Berkeley has *more* As and *fewer* Cs than the comparison
+distribution, which is the opposite of the rumour we set out to test.
+
+---
+
+# Practice problems
+
+## Choose the test
+
+For each scenario, answer the four questions and name the test.
+
+### Problem 1
+
+A researcher measures resting heart rate in 40 runners and 40 non-runners and wants to know
+whether mean heart rate differs.
+
+**Answer.** Continuous outcome, two groups, independent (different people), assumptions
+plausible at n = 40 per group. **Two sample $t$ test.** `t.test(hr ~ group)`
+
+### Problem 2
+
+The same 30 patients have their blood pressure measured before and after eight weeks on a
+drug.
+
+**Answer.** Continuous outcome, two measurements, and the *same* patients appear in both,
+so the data are **paired**. **Paired $t$ test**, which is a one sample $t$ on the 30
+differences. `t.test(before, after, paired = TRUE)`
+
+If the differences look badly skewed at n = 30, the Wilcoxon signed rank is the
+non-parametric partner.
+
+### Problem 3
+
+A survey of 400 people records political party (4 categories) and whether they support a
+policy (yes or no). Are the two related?
+
+**Answer.** **Two** categorical variables measured on one sample, so this is a chi-square
+**test of independence** on a 4x2 table, with $(4-1)(2-1) = 3$ degrees of freedom.
+`chisq.test(table(party, support))`
+
+### Problem 4
+
+You roll a die 600 times and want to know whether it is fair.
+
+**Answer.** **One** categorical variable with six categories, one sample, and the null gives
+the expected share of each. **Chi-square goodness of fit**, $k - 1 = 5$ degrees of freedom.
+
+```{r q4}
+rolls <- c(96, 108, 92, 118, 87, 99)
+chisq.test(rolls)   # equal probabilities is the default
+```
+
+### Problem 5
+
+Stress scores from four different treatment groups, 25 people in each, all independent.
+
+**Answer.** Continuous outcome, four independent groups. **ANOVA**, followed by pairwise
+comparisons with Tukey's HSD or a Bonferroni correction if the ANOVA is significant. ANOVA
+never tells you *which* groups differ.
+
+## Compute
+
+### Problem 6
+
+In a trial, 45 of 300 patients on treatment relapsed, compared with 68 of 290 on placebo.
+Test whether the treatment reduces relapse, and give a 95% confidence interval for the
+difference.
+
+*Hint: pool for the test, do not pool for the interval.*
+
+```{r q6}
+x6 <- c(45, 68)
+n6 <- c(300, 290)
+
+p1_6 <- x6[1]/n6[1]
+p2_6 <- x6[2]/n6[2]
+
+# test: pooled
+p_pool6  <- sum(x6)/sum(n6)
+se_pool6 <- sqrt(p_pool6 * (1 - p_pool6) * (1/n6[1] + 1/n6[2]))
+z6 <- (p1_6 - p2_6) / se_pool6
+z6
+pnorm(z6)
+
+prop.test(x = x6, n = n6, alternative = "less", correct = FALSE)
+
+# interval: unpooled
+se_un6 <- sqrt(p1_6*(1-p1_6)/n6[1] + p2_6*(1-p2_6)/n6[2])
+(p1_6 - p2_6) + c(-1, 1) * 1.96 * se_un6
+```
+
+**Answer.** $\hat{p}_1 = 0.150$ and $\hat{p}_2 = 0.2345$, a difference of -0.0845. The pooled
+SE is 0.0324, giving $z = -2.61$ and a one sided p-value of 0.0046. Reject the null. The
+95% CI using the unpooled SE is about -0.148 to -0.021, which excludes 0 as it must.
+
+### Problem 7
+
+Verify on Problem 6 that $\chi^2 = z^2$.
+
+```{r q7}
+z6^2
+prop.test(x = x6, n = n6, correct = FALSE)$statistic
+```
+
+**Answer.** Both are 6.797. They are the same test. The $z$ version gives you a direction and
+an interval, the chi-square version generalises to bigger tables.
+
+### Problem 8
+
+A clinic expects its patients to be 40% under 30, 35% aged 30 to 50, and 25% over 50. Among
+200 patients it sees 60, 82 and 58. Is the clinic's mix different from what was expected?
+
+```{r q8}
+obs8 <- c(60, 82, 58)
+p8   <- c(0.40, 0.35, 0.25)
+
+sum(obs8) * p8          # expected counts
+chisq.test(obs8, p = p8)
+```
+
+**Answer.** Expected counts are 80, 70 and 50, all well above 5. $\chi^2 = 8.34$ on 2
+degrees of freedom, p-value about 0.016. Reject at $\alpha = 0.05$. The under-30 group is
+the biggest contributor, with 60 observed against 80 expected.
+
+Note the degrees of freedom is $k - 1 = 2$, not 3. One variable, three categories.
+
+### Problem 9
+
+You run a test and get p = 0.03, but your 95% confidence interval contains the null value.
+What went wrong?
+
+**Answer.** You made an arithmetic error somewhere. A two sided test at $\alpha = 0.05$ and
+a 95% confidence interval are the same arithmetic run in two directions, so they can never
+disagree. The usual culprits are using the wrong critical value, or pooling in the interval
+when you should not have.
+
+The one legitimate exception to check for is a **one sided** test, where a p-value below
+0.05 is perfectly compatible with a two sided interval that contains the null.
+
+### Problem 10
+
+Which of the tests we covered are non-parametric, and what do you give up by using one?
+
+**Answer.** The Wilcoxon rank sum (also called Mann-Whitney), the Wilcoxon signed rank, the
+sign test, and Kruskal-Wallis. They work on ranks rather than raw values, so they do not
+assume a normal distribution and an extreme outlier moves them much less.
+
+What you give up is **power**. If the normality assumption really does hold, the
+non-parametric version is less likely to detect a real effect than its parametric partner.
+You are paying in sensitivity for robustness.
