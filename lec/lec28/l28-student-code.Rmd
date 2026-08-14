@@ -1,0 +1,345 @@
+---
+title: "Bonus material: Bootstraps and permutation tests"
+output: html_document
+---
+
+```{r load-libraries, include=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(infer)
+knitr::opts_chunk$set(fig.align = "center", message = FALSE, warning = FALSE)
+```
+
+Every calculation from the bonus lecture in one runnable place. Everything we have
+done so far got a confidence interval or a p-value out of a **formula**. Both
+methods here get the same quantities out of **resampling the data on a computer**
+instead, so they keep working when the formula's assumptions do not.
+
+The only external file you need is `hsb2.csv`, which should sit in the same folder
+as this file. Everything else is typed in below. Try the practice problems at the
+bottom before checking the answers.
+
+If `library(infer)` fails, install it once with `install.packages("infer")`.
+
+## The two methods side by side
+
+| | Bootstrap | Permutation test |
+|---|---|---|
+| Answers | what is the **CI** for a parameter? | what is the **p-value**? |
+| Resample | **with** replacement, from the sample | **without** replacement, reshuffling the group labels |
+| Keeps intact | nothing, each draw is independent | the group sizes, and the pool of outcome values |
+| Assumes | the sample is a SRS | the null of no association is true |
+| Read off | the 2.5th and 97.5th percentiles | how often the reshuffles beat the observed statistic |
+
+The one-sentence version. The bootstrap asks "how much would this statistic
+bounce around if I could sample again?", and the permutation test asks "how
+often would chance alone produce a gap this big?".
+
+## Part 1: the bootstrap
+
+### The serum data
+
+Efron's serum measurements on 54 patients.
+
+```{r}
+serum_data <- data.frame(
+  serum = c(0.1, 0.1, 0.2, 0.4, 0.4, 0.6, 0.8, 0.8, 0.9, 0.9,
+            1.3, 1.3, 1.4, 1.5, 1.6, 1.6, 1.7, 1.7, 1.7, 1.8,
+            2.0, 2.0, 2.2, 2.2, 2.2, 2.3, 2.3, 2.4, 2.4, 2.4,
+            2.4, 2.4, 2.4, 2.5, 2.5, 2.5, 2.7, 2.7, 2.8, 2.9,
+            2.9, 2.9, 3.0, 3.1, 3.1, 3.2, 3.2, 3.3, 3.3, 3.5,
+            4.4, 4.5, 6.4, 9.4))
+
+ggplot(serum_data, aes(serum)) +
+  geom_histogram(binwidth = 0.5, col = "white") +
+  theme_minimal(base_size = 13) +
+  labs(title = "Histogram of serum measurements")
+```
+
+That long right tail is the whole reason this lecture exists. A t-interval leans
+on the CLT, and here the population is clearly not Normal.
+
+### The theory-based CI for the mean, two ways
+
+```{r}
+t_star <- qt(0.975, df = 53)  # t* for a 95% CI
+
+serum_data %>%
+  summarise(mean_serum = mean(serum),
+            se_serum = sd(serum) / sqrt(n()),
+            lower_CI = mean_serum - t_star * se_serum,
+            upper_CI = mean_serum + t_star * se_serum)
+```
+
+```{r}
+t.test(serum_data$serum)
+```
+
+Both give a 95% CI for $\mu$ of 1.90 to 2.74. Note this is an interval for the
+**mean**, not the proportion and not the median.
+
+### Bootstrap CI for the median
+
+There is no formula for the standard error of a median, so we build the sampling
+distribution by brute force. Resample 54 values **with replacement** from the 54
+we have, take the median, and repeat 10,000 times.
+
+```{r}
+number_of_bootstraps <- 10000
+sample_size <- 54
+
+calc_sample_stats <- function(df) {
+  df %>% summarize(sample_median = median(serum))
+}
+
+set.seed(1)   # so you get the same answer we did
+
+many_sample_medians <- replicate(number_of_bootstraps,
+                                 sample_n(serum_data, sample_size, replace = TRUE),
+                                 simplify = FALSE) %>%
+  lapply(., calc_sample_stats) %>%
+  bind_rows() %>%
+  mutate(sample.id = 1:n())
+
+head(many_sample_medians)
+```
+
+You are not expected to be able to write that loop. You **are** expected to
+understand the next chunk, which reads the interval straight off the percentiles.
+
+```{r}
+bounds <- many_sample_medians %>%
+  summarise(lower_CI = quantile(sample_median, 0.025),
+            upper_CI = quantile(sample_median, 0.975))
+
+bounds
+```
+
+```{r}
+ggplot(many_sample_medians, aes(x = sample_median)) +
+  geom_histogram(binwidth = 0.07, col = "white", fill = "#99d8c9") +
+  labs(x = "Bootstrapped medians") +
+  geom_vline(xintercept = median(serum_data$serum)) +
+  geom_vline(xintercept = bounds$lower_CI, lty = 2) +
+  geom_vline(xintercept = bounds$upper_CI, lty = 2) +
+  theme_minimal(base_size = 13)
+```
+
+Our estimate of the median is 2.35 and the bootstrap 95% CI is 1.9 to 2.5. Two
+things to notice. The distribution is skewed left, and the interval is **not**
+symmetric around 2.35. A formula of the form estimate $\pm$ margin of error could
+never have produced that.
+
+### Bootstrap CI for a correlation
+
+Same recipe, different statistic. This is the point of the bootstrap: the recipe
+does not change when the statistic does.
+
+```{r}
+hsb2 <- read.table("hsb2.csv", sep = ",", header = TRUE)
+
+corr_math_write <- hsb2 %>%
+  summarise(correlation = cor(write, math))
+corr_math_write
+```
+
+```{r}
+ggplot(hsb2, aes(write, math)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  annotate("text", x = 40, y = 70, label = "corr = 0.62") +
+  theme_minimal(base_size = 13)
+```
+
+```{r}
+number_of_bootstraps <- 1000
+sample_size <- 200
+
+calc_sample_stats <- function(df) {
+  df %>% summarize(sample_corr = cor(math, write))
+}
+
+set.seed(1)
+
+many_sample_correlations <- replicate(number_of_bootstraps,
+                                      sample_n(hsb2, sample_size, replace = TRUE),
+                                      simplify = FALSE) %>%
+  lapply(., calc_sample_stats) %>%
+  bind_rows() %>%
+  mutate(sample.id = 1:n())
+
+bounds <- many_sample_correlations %>%
+  summarise(lower_CI = quantile(sample_corr, 0.025),
+            upper_CI = quantile(sample_corr, 0.975))
+
+bounds
+```
+
+The correlation is 0.62 with a 95% CI of 0.53 to 0.69. The interval excludes 0,
+so writing and math scores are clearly related.
+
+## Part 2: permutation tests
+
+### The mosquito data
+
+Volunteers were randomised to drink beer or water, and the number of mosquitoes
+flying toward each of them was counted.
+
+```{r}
+beer <- c(27, 19, 20, 20, 23, 17, 21, 24, 31, 26, 28, 20,
+          27, 19, 25, 31, 24, 28, 24, 29, 21, 21, 18, 27,
+          20)
+
+water <- c(21, 19, 13, 22, 15, 22, 15, 22, 20, 12, 24, 24,
+           21, 19, 18, 16, 23, 20)
+
+mosq_data <- data.frame(num_mosquitos = c(beer, water),
+                        treatment = c(rep("beer", 25),
+                                      rep("water", 18)))
+
+ggplot(mosq_data, aes(x = treatment, y = num_mosquitos)) +
+  geom_boxplot(aes(fill = treatment), show.legend = FALSE) +
+  theme_minimal(base_size = 13) +
+  labs(y = "Number of mosquitos", x = "")
+```
+
+### The parametric answer first
+
+```{r}
+t.test(beer, water, alternative = "two.sided")
+```
+
+### The same question by reshuffling
+
+The null says the label "beer" tells you nothing about the count. If that is
+true, we can rip the 43 labels off, shuffle them, staple them back on, and the
+difference in means we get is just as legitimate as the one we observed. Do that
+1000 times and you have the null distribution.
+
+```{r}
+set.seed(1)
+
+null_distn <- mosq_data %>%
+  specify(response = num_mosquitos, explanatory = treatment) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c("beer", "water"))
+
+nrow(null_distn)
+head(as.data.frame(null_distn), 4)
+```
+
+The observed difference is the thing we compare against that distribution.
+
+```{r}
+obs_diff <- mean(beer) - mean(water)
+obs_diff
+```
+
+```{r}
+null_distn %>%
+  visualize() +
+  shade_p_value(obs_stat = obs_diff, direction = "two_sided")
+```
+
+```{r}
+null_distn %>%
+  get_p_value(obs_stat = obs_diff, direction = "two_sided")
+```
+
+Only about 2 reshuffles in 1000 landed as far from zero as 4.38, so p is about
+0.002 and we reject the null. The t-test gave 0.0007. The two methods agree on
+the conclusion, which is what you should expect when the sample is large enough
+for the t-test to be trustworthy.
+
+Note that a permutation p-value can never be exactly 0. If you see `0`, it means
+"smaller than 1/reps", so run more reps before reporting it.
+
+## Practice problems
+
+### Problem 1
+
+Change the bootstrap for the serum data so it gives a 95% CI for the **first
+quartile** $Q_1$ instead of the median.
+
+*Hint: only the function inside `calc_sample_stats()` needs to change.*
+
+```{r}
+set.seed(1)
+
+calc_q1 <- function(df) {
+  df %>% summarize(sample_q1 = quantile(serum, 0.25))
+}
+
+many_q1 <- replicate(10000,
+                     sample_n(serum_data, 54, replace = TRUE),
+                     simplify = FALSE) %>%
+  lapply(., calc_q1) %>%
+  bind_rows()
+
+many_q1 %>%
+  summarise(q1 = quantile(serum_data$serum, 0.25),
+            lower_CI = quantile(sample_q1, 0.025),
+            upper_CI = quantile(sample_q1, 0.975))
+```
+
+The recipe did not change at all. That is the answer to "which statistics can I
+bootstrap?" — essentially any of them.
+
+### Problem 2
+
+You bootstrap a median 1000 times and get a 95% CI of 1.9 to 2.5. A classmate
+says "so there is a 95% probability the true median is between 1.9 and 2.5."
+What is wrong with that sentence?
+
+*Hint: think back to how we interpreted the t-interval.*
+
+The true median is a fixed number, not a random one, so it does not have a
+probability of being anywhere. The 95% describes the **method**: if we repeated
+the whole study and this procedure many times, 95% of the intervals we built
+would cover the true median. Bootstrapping changes how we compute the interval,
+not how we interpret it.
+
+### Problem 3
+
+Turn the 95% bootstrap CI for the correlation into a **99%** CI. Does it get
+wider or narrower, and why?
+
+```{r}
+many_sample_correlations %>%
+  summarise(lower_CI = quantile(sample_corr, 0.005),
+            upper_CI = quantile(sample_corr, 0.995))
+```
+
+Wider. To be more confident of catching the true value you have to cast a bigger
+net, so we take the middle 99% of the bootstrap distribution instead of the
+middle 95%.
+
+### Problem 4
+
+In the mosquito permutation test, what would happen to the null distribution if
+we shuffled the labels but kept 25 in the beer group and 18 in the water group,
+versus splitting them 30 and 13? Why does `generate(type = "permute")` always
+preserve the original group sizes?
+
+Because the group sizes are part of the study design, not part of the null
+hypothesis. The null claims the labels are unrelated to the counts, not that the
+experiment enrolled different numbers of people. Holding the sizes fixed makes
+the reshuffled differences comparable to the observed one, since a difference of
+means based on 25 versus 18 has a different amount of noise than one based on 30
+versus 13.
+
+### Problem 5
+
+Run the mosquito permutation test as a **one-sided** test of whether beer
+drinkers attract *more* mosquitoes. Should the p-value be bigger or smaller than
+the two-sided one?
+
+```{r}
+null_distn %>%
+  get_p_value(obs_stat = obs_diff, direction = "greater")
+```
+
+Smaller, about half the two-sided value, because we now count only the reshuffles
+in the upper tail rather than both tails. Choose the direction from the research
+question **before** looking at the data, not after.
